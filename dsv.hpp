@@ -168,7 +168,7 @@ public:
     }
 
     template<class T>
-    void add(std::string name, T number, std::string attr = "", std::string attr2 = "") {
+    inline void add(std::string name, T number, std::string attr = "", std::string attr2 = "") {
         tss << "<tr>";
         attr_name(name, attr);
         attr_value(std::to_string(number), attr2.empty() ? attr : attr2);
@@ -176,7 +176,7 @@ public:
     }
 
     
-    void addPointer(std::string name, IDataStructure* ds, std::string content = "", std::string attr = "", std::string attr2 = "") {
+    inline void addPointer(std::string name, IDataStructure* ds, std::string content = "", std::string attr = "", std::string attr2 = "") {
         if (ds == nullptr) return;
         std::string pt_name = viz.genPortName();
 
@@ -190,7 +190,7 @@ public:
         }
     }
 
-    void addLeftRightSubTree(std::string name, IDataStructure* left, IDataStructure* right, std::string content_left = "", std::string content_right = "", std::string attr = "", std::string attr2 = "") {
+    inline void addLeftRightSubTree(std::string name, IDataStructure* left, IDataStructure* right, std::string content_left = "", std::string content_right = "", std::string attr = "", std::string attr2 = "") {
         if (left == nullptr && right == nullptr) return;
         std::string pt_name_l = viz.genPortName();
         std::string pt_name_r = viz.genPortName();
@@ -209,7 +209,7 @@ public:
         }
     }
 
-    void addChildren(std::string name, IDataStructure** children, size_t size, std::vector<std::string> content = std::vector<std::string>(0), std::string attr = "", std::string attr2 = "") {
+    inline void addChildren(std::string name, IDataStructure** children, size_t size, std::vector<std::string> content = std::vector<std::string>(0), std::string attr = "", std::string attr2 = "") {
         tss << "<tr>";
         attr_name(name, attr);
         for (size_t i = 0; i < size; ++i) {
@@ -225,7 +225,7 @@ public:
     }
 
     template<class T>
-    void addPointerC(std::string name, T* ds, std::string content = "", std::string attr = "", std::string attr2 = "") {
+    inline void addPointerC(std::string name, T* ds, std::string content = "", std::string attr = "", std::string attr2 = "") {
         if (ds == nullptr) return;
         std::string pt_name = viz.genPortName();
 
@@ -241,7 +241,7 @@ public:
 
 
     template<class T>
-    void addChildrenC(std::string name, T** children, size_t size, std::vector<std::string> content = std::vector<std::string>(0), std::string attr = "", std::string attr2 = "") {
+    inline void addChildrenC(std::string name, T** children, size_t size, std::vector<std::string> content = std::vector<std::string>(0), std::string attr = "", std::string attr2 = "") {
         tss << "<tr>";
         attr_name(name, attr);
         for (size_t i = 0; i < size; ++i) {
@@ -258,7 +258,7 @@ public:
 
 
     template<class T>
-    void addArray(std::string name, T* numbers, size_t size, std::string attr = "", std::string attr2 = "") {
+    inline void addArray(std::string name, T* numbers, size_t size, std::string attr = "", std::string attr2 = "") {
         tss << "<tr>";
         attr_name(name, attr);
         for (size_t i = 0; i < size; ++i) {
@@ -279,7 +279,7 @@ private:
 };
 
 template< >
-void TableNode::add<std::string>(std::string name, std::string str, std::string attr, std::string attr2) {
+inline void TableNode::add<std::string>(std::string name, std::string str, std::string attr, std::string attr2) {
     tss << "<tr>";
     attr_name(name, attr);
     attr_value(str, attr2.empty() ? attr : attr2);
@@ -288,7 +288,7 @@ void TableNode::add<std::string>(std::string name, std::string str, std::string 
 
 
 
-std::ostream& operator<<(std::ostream& out, const IViz& viz) {
+inline std::ostream& operator<<(std::ostream& out, const IViz& viz) {
     out << viz.print() << std::endl;
     return out;
 }
