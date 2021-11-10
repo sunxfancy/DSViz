@@ -18,11 +18,6 @@ public:
 };
 
 
-//template <class T>
-//struct dsviz_show {
-//    std::string operator()(T*, IViz&);
-//}; class DSVizShow = dsviz_show<T>
-
 class IViz {
 public:
     virtual std::string print() const = 0;
@@ -68,7 +63,6 @@ public:
     virtual std::string genPortName() {
         return "_port" + std::to_string(count2++);
     }
-
 
 
     static std::string encode(std::string data) {
@@ -175,8 +169,17 @@ public:
         tss << "</tr>";
     }
 
+    inline void addEdge(IDataStructure* ds, std::string edge_label = "", std::string edge = "") {
+        if (ds != nullptr) {
+            viz.load_ds(ds);
+            if (edge_label != "") 
+                edge +=" label=\""+edge_label+"\"";
+            viz.addEdge(this->name, ds, "["+ edge +"]");
+        }
+    }
+
     
-    inline void addPointer(std::string name, IDataStructure* ds, std::string content = "", std::string attr = "", std::string attr2 = "") {
+    inline void addPointer(std::string name, IDataStructure* ds, std::string content = "", std::string attr = "", std::string attr2 = "", std::string edge = "") {
         if (ds == nullptr) return;
         std::string pt_name = viz.genPortName();
 
@@ -186,7 +189,7 @@ public:
         tss << "</tr>";
         if (ds != nullptr) {
             viz.load_ds(ds);
-            viz.addEdge(this->name + ":" + pt_name, ds, "");
+            viz.addEdge(this->name + ":" + pt_name, ds, edge);
         }
     }
 
@@ -312,9 +315,6 @@ public:
         return ss.str();
     }
 };
-
-
-
 
 
 } // namespace DSViz
