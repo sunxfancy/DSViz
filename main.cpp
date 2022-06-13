@@ -6,19 +6,25 @@ using std::string;
 struct Node : public DSViz::IDataStructure {
     string name;
     float sum;
-    struct Node* left;
-    struct Node* right;
 
-    Node(string name, float sum, Node* left, Node* right) : name(name), sum(sum), left(left), right(right) {} 
+    Node* parent;
+    Node* left;
+    Node* right;
 
-    virtual string dsviz_show(DSViz::IViz& viz) {
+    Node(string name, float sum, Node* left, Node* right) 
+        : name(name), sum(sum), parent(nullptr), left(left), right(right) {
+        if (left)  left->parent  = this;
+        if (right) right->parent = this;
+    } 
+
+    virtual void dsviz_show(DSViz::IViz& viz) {
         DSViz::TableNode node(viz, 2);
-        // node.genLabel();
+        viz.setName(this, node.name);
+        node.addPointer("parent", parent, "", "", "", "[constraint=false]");
+        node.add("name", name);
         node.add("sum", sum);
-        // node.addPointer("left", left);
-        // node.addPointer("right", right);
-        node.addLeftRightSubTree("child", left, right);
-        return node.name;
+        node.addEdge(left,  "left");
+        node.addEdge(right, "right");
     }
 };
 

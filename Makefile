@@ -1,5 +1,5 @@
 all:
-	g++ main.cpp -o dsv
+	g++ -g main.cpp -o dsv
 
 clean:
 	rm -rf dsv 
