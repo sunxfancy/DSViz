@@ -36,8 +36,6 @@ struct Node : public DSViz::IDataStructure {
 - `add` can add a new field
 - `addEdge` links nodes 
 
-![](./a.png)
-
 
 ## Generate a *.dot file for your data structure
 
@@ -60,5 +58,6 @@ You can use `xdot` in linux to open the graphviz dot file or using `dot` to conv
   dot -Tpng filename.dot -o outfile.png
 ```
 
+![](./a.png)
 
 
