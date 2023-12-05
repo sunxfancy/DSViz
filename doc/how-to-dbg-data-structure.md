@@ -229,4 +229,4 @@ If you are interested in this approach. Please clone [this repo](https://github.
 
 ## This is a bit complicated, why not just dump graphviz string into a file?
 
-Yes... actually, that is what I would do if I didn't have a VSCode. But I noticed this provides you a better flexibility. A debugger expression can be evaluated without stopping/recompiling your code. So you can debug things  reactively within a large code base. 
+Yes... actually, that is what I would do if I didn't have a VSCode. I will write a function to dump the file and evaluate it in the debugger then use `xdot` to show it. But CodeLLDB is quite powerful, you can make a specific debugger script for your project and that will make your debugging experience much better.
