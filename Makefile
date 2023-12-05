@@ -1,5 +1,7 @@
-all:
-	g++ -g main.cpp -o dsv
+all: basic bst
+
+%: example/%.cpp
+	mkdir -p bin && clang++ -glldb -std=c++11 -I. ./example/$*.cpp -o bin/$*
 
 clean:
-	rm -rf dsv 
+	rm -rf bin
