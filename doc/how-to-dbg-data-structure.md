@@ -226,3 +226,7 @@ If everything goes well, you will see the graphviz figure in the VSCode while de
 
 If you are interested in this approach. Please clone [this repo](https://github.com/sunxfancy/DSViz) and play on a local machine. You will find it is quite powerful in debugging.
 
+
+## This is a bit complicated, why not just dump graphviz string into a file?
+
+Yes... actually, that is what I would do if I didn't have a VSCode. But I noticed this provides you a better flexibility. A debugger expression can be evaluated without stopping/recompiling your code. So you can debug things  reactively within a large code base. 
