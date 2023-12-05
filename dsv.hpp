@@ -38,19 +38,28 @@ class Node;
 
 /**
  * @brief A interface for data structure to print graphviz dot node
-*/
+ */
 class IDataStructure {
   public:
     virtual void dsviz_show(IViz &viz) = 0;
 };
 
-
+/**
+ * @brief A mock class which provides a non-invasive way to print graphviz dot
+ * @param T The type of data structure you want to mock
+ * @param F The function to print the data structure
+ */
 template <typename T, void (*F)(T*, IViz &)>
 class Mock : public IDataStructure {
   public:
     virtual void dsviz_show(IViz &viz) override {
         F(ds, viz);
     }
+
+    /**
+     * @brief Get the mock object pointer from the original pointer
+     * @param ds The original pointer
+     */
     static Mock<T,F>* get(T *ds) {
         auto& c = container();
         if (c.find(ds) == c.end()) {
@@ -68,41 +77,133 @@ class Mock : public IDataStructure {
     T *ds;
 };
 
-
+/**
+ * @brief An abstract interface to print graphviz dot graph
+ */
 class IViz {
   public:
+    /**
+     * @brief Print the graphviz dot file
+     * @return The graphviz dot file in std::string
+     */
     virtual std::string print() const = 0;
+
+    /**
+     * @brief Generate a unique port name
+     * @return The port name `_portN`
+     */
     virtual std::string genPortName() = 0;
+
+    /**
+     * @brief Generate a unique edge name
+     * @return The edge name `_edgeN`
+     */
     virtual std::string genEdgeName() = 0;
+
+    /**
+     * @brief Generate a unique node name
+     * @return The node name `_nodeN`
+     */
     virtual std::string genNodeName() = 0;
 
+
+    /**
+     * @brief Add an edge to the graph
+     * @param from The name of the source node
+     * @param to The name of the target node
+     * @param edge The edge label
+     */
     virtual void addEdge(std::string from, std::string to,
                          std::string edge = "") = 0;
+
+    /**
+     * @brief Add an edge to the graph
+     * @param from The name of the source node
+     * @param to The name of the target node
+     * @param edge The edge label
+     */
     virtual void addEdge(std::string from, void *to, std::string edge = "") {
         addEdge(from, getName(to), edge);
     }
+
+    /**
+     * @brief Add an edge to the graph
+     * @param from The name of the source node
+     * @param to The name of the target node
+     * @param edge The edge label
+     */
     virtual void addEdge(void *from, std::string to, std::string edge = "") {
         addEdge(getName(from), to, edge);
     }
+
+    /**
+     * @brief Add an edge to the graph
+     * @param from The name of the source node
+     * @param to The name of the target node
+     * @param edge The edge label
+     */
     virtual void addEdge(void *from, void *to, std::string edge = "") {
         addEdge(getName(from), getName(to), edge);
     }
 
+    /**
+     * @brief Check if a pointer is already mapped to a node in dot file
+     */
     virtual bool hasNode(void *ds) const                     = 0;
+
+    /**
+     * @brief Add a node to the graph
+     * @param name The name of the node
+     * @param node The node content
+     */
     virtual void addNode(std::string name, std::string node) = 0;
 
+
+    /**
+     * @brief Add a subgraph to the graph
+     * @param name The content of the subgraph in graphviz dot format
+     */
     virtual void addSubGraph(std::string sg) = 0;
 
+    /**
+     * @brief Set the name of a node
+     * @param ds The pointer to the node
+     * @param name The name of the node
+     */
     virtual void        setName(void *ds, std::string name) = 0;
+
+    /**
+     * @brief Get the name of a node
+     * @param ds The pointer to the node
+     * @return The name of the node
+     */
     virtual std::string getName(void *ds) const             = 0;
+
+    /**
+     * @brief Get the pointer from the name
+     * @param name The name of the pointer
+     * @return The pointer
+     */
     virtual void       *getDS(std::string name) const       = 0;
 
+    /**
+     * @brief Load a data structure to the graph
+     * @details This function will start a depth-first search from the root node.
+     *          Then all the nodes are able to reached will be added to the graph.
+     * @param ds The pointer to the data structure
+     */
     virtual void load_ds(IDataStructure *ds) {
         if (!hasNode(ds)) {
             ds->dsviz_show(*this);
         }
     }
 
+    /**
+     * @brief Load a data structure to the graph
+     * @details This function will start a depth-first search from the root node.
+     *          Then all the nodes are able to reached will be added to the graph.
+     * @param ds The pointer to the data structure
+     */
     template <class T> void load_ds_c(T *ds) {
         if (!hasNode(ds)) {
             dsviz_show(ds, *this);
@@ -136,6 +237,9 @@ class IViz {
     }
 };
 
+/**
+ * @brief A class representing a node in graphviz dot file
+ */
 class Node {
   public:
     Node(IViz &viz, std::string name = "", std::string shape = "",
@@ -192,6 +296,11 @@ class Node {
     std::map<std::string, std::string> other_attrs;
 };
 
+/**
+ * @brief A class representing a table node in graphviz dot file
+ *        such as:
+ *          node [lable=< <table border='0' cellborder='1' cellspacing='0'>...</table> >]
+ */
 class TableNode : public Node {
   public:
     TableNode(IViz &viz, int span = 1, std::string name = "",
@@ -387,6 +496,10 @@ TableNode::add<const char *>(std::string name, const char *str,
     tss << "</tr>";
 }
 
+
+/**
+ * @brief The configuration of the system
+ */
 struct Config {
     std::string node_style{"shape=plaintext"};
     std::string edge_style{""};
@@ -406,6 +519,9 @@ struct Config {
     }
 };
 
+/**
+ * @brief A class representing an edge in graphviz dot file
+ */
 class Edge {
   public:
     Edge(std::string from, std::string to) : from(from), to(to) {}
@@ -418,6 +534,9 @@ class Edge {
     }
 };
 
+/**
+ * @brief A class representing a subgraph in graphviz dot file
+ */
 class SubGraph : public IViz {
   public:
     SubGraph(IViz &viz, std::string name = "", std::string label = "",
@@ -490,6 +609,9 @@ operator<<(std::ostream &out, const IViz &viz) {
     return out;
 }
 
+/**
+ * @brief A class representing the whole dot file in graphviz
+ */
 class Dot : public IViz {
   public:
     Dot(Config config = {}) : config(config) {}
