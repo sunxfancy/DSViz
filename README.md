@@ -129,3 +129,64 @@ Then we can print the dot file:
     std::cout << dot.print();
 ```
 
+
+## API behavior and lifetime
+
+- `load_ds(nullptr)`, `load_ds_c(nullptr)` (with a typed pointer), and
+  `Mock::get(nullptr)` are safe: no node is loaded, and the adapter is null.
+- Register each node with `viz.setName(pointer, node.name)` **before** following
+  its pointers. This is required for cycles and shared children. Traversal is
+  recursive; very deep graphs should be bounded by the caller.
+- `TableNode` submits its contents on destruction or explicit `Done()`.
+  `Done()` is idempotent; finish all edits before calling it. Destroy builders
+  before reading the parent graph, or call `Done()` first. A `SubGraph` is
+  attached to its parent when it is destroyed; its own `print()` returns a
+  complete current subgraph snapshot.
+- Node labels, edge labels, and `Node::addAttr` values are literal text and are
+  escaped for DOT. Table field names and values are escaped as HTML text.
+  Table `attr`/`attr2` arguments are **raw GraphViz HTML attributes**, for example
+  `"bgcolor='red'"`. `Config`, raw node/edge declarations, node IDs, and subgraph
+  names also accept raw DOT syntax; do not pass untrusted text to these fields.
+- Multiple calls to `addEdge` retain multiple edges even with identical endpoints.
+  `addPointerC` accepts an optional final raw edge attribute argument, matching
+  `addPointer`.
+- `getDS(name)` returns `nullptr` for unknown names. `getName(pointer)` throws
+  `std::out_of_range` for unknown pointers. Empty node names/endpoints and
+  conflicting pointer/name mappings throw `std::invalid_argument`.
+  `setName` changes the pointer/name mapping only; it does not rename already
+  emitted nodes or edges.
+- `Dot::clear()` (also `reset()`) removes the snapshot and resets ID counters,
+  preserving configuration. Destroy all builders before resetting. Loading the
+  same pointer again is skipped; clear and reload to visualize changed data.
+- `dot.write(output_stream)` writes directly to an `std::ostream`;
+  `dot.print()` returns the same DOT as a string.
+- `Mock` owns its adapters, but does not own the original objects. Original
+  objects must remain alive during traversal. The compatibility cache is per
+  template specialization and is not thread-safe. `Mock::clearCache()` releases
+  adapters; call it only after all graphs and adapter pointers are discarded.
+  The cache also releases adapters at process shutdown.
+
+The debugger example uses a dynamically sized, thread-local string plus
+`_dotToDebuggerSize()`. The returned pointer remains valid until the next call
+on that thread. The Python helper reads exactly that size and reports errors;
+its explicit maximum is 64 MiB. HTML is escaped before display.
+
+## Build and test
+
+A C++11 compiler, GNU Make, GraphViz (`dot`), and Python 3 are required:
+
+```sh
+make
+make -j2 test
+make -j2 release
+make -j2 sanitize
+```
+
+The suite checks API behavior, invalid input, cycles/shared nodes, attributes,
+subgraphs, multi-file header linkage, large debugger buffers, and Python bridge
+errors. Generated DOT is parsed by GraphViz. Tests remain active in Release
+builds, and JUnit/log/DOT/SVG artifacts are saved in `bin/test-results/`.
+
+GitHub Actions covers GCC/Clang, C++11/17/20, Debug/Release, macOS, sanitizers,
+and an 85% header line-coverage gate. See [tests/README.md](tests/README.md) for
+coverage setup, report locations, CI configuration, and adding tests.

@@ -25,6 +25,8 @@
 #pragma once
 #include <cassert>
 #include <map>
+#include <memory>
+#include <stdexcept>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -41,6 +43,7 @@ class Node;
  */
 class IDataStructure {
   public:
+    virtual ~IDataStructure() = default;
     virtual void dsviz_show(IViz &viz) = 0;
 };
 
@@ -61,15 +64,19 @@ class Mock : public IDataStructure {
      * @param ds The original pointer
      */
     static Mock<T,F>* get(T *ds) {
+        if (!ds) return nullptr;
         auto& c = container();
         if (c.find(ds) == c.end()) {
-            c[ds] = new Mock(ds);
+            c[ds].reset(new Mock(ds));
         }
-        return c[ds]; 
+        return c[ds].get();
     }
+    // Call only after all graphs and references to these adapters are discarded.
+    static void clearCache() { container().clear(); }
+
   private:
-    static std::map<T*, Mock<T,F>*>& container() {
-        static std::map<T*, Mock<T,F>*> inst;
+    static std::map<T*, std::unique_ptr<Mock<T,F>>>& container() {
+        static std::map<T*, std::unique_ptr<Mock<T,F>>> inst;
         return inst;
     }
 
@@ -82,6 +89,8 @@ class Mock : public IDataStructure {
  */
 class IViz {
   public:
+    virtual ~IViz() = default;
+    virtual void write(std::ostream &out) const { out << print(); }
     /**
      * @brief Print the graphviz dot file
      * @return The graphviz dot file in std::string
@@ -193,7 +202,7 @@ class IViz {
      * @param ds The pointer to the data structure
      */
     virtual void load_ds(IDataStructure *ds) {
-        if (!hasNode(ds)) {
+        if (ds && !hasNode(ds)) {
             ds->dsviz_show(*this);
         }
     }
@@ -205,9 +214,24 @@ class IViz {
      * @param ds The pointer to the data structure
      */
     template <class T> void load_ds_c(T *ds) {
-        if (!hasNode(ds)) {
+        if (ds && !hasNode(ds)) {
             dsviz_show(ds, *this);
         }
+    }
+
+    // Escape literal text in a DOT quoted string (not raw DOT syntax).
+    inline static std::string escapeDot(const std::string &text) {
+        std::string result;
+        for (char c : text) {
+            switch (c) {
+            case '\\': result += "\\\\"; break;
+            case '"': result += "\\\""; break;
+            case '\n': result += "\\n"; break;
+            case '\r': result += "\\r"; break;
+            default: result += c;
+            }
+        }
+        return result;
     }
 
     inline static std::string encode(std::string data) {
@@ -244,7 +268,7 @@ class Node {
   public:
     Node(IViz &viz, std::string name = "", std::string shape = "",
          std::string style = "")
-        : viz(viz), shape(shape), style(style) {
+        : shape(shape), style(style), viz(viz) {
         if (name == "")
             this->name = viz.genNodeName();
         else
@@ -269,7 +293,7 @@ class Node {
                          std::string edge = "") {
         if (ds != nullptr) {
             viz.load_ds(ds);
-            if (edge_label != "") edge += " label=\"" + edge_label + "\"";
+            if (edge_label != "") edge += " label=\"" + IViz::escapeDot(edge_label) + "\"";
             viz.addEdge(this->name, ds, "[" + edge + "]");
         }
     }
@@ -282,7 +306,7 @@ class Node {
 
   protected:
     virtual void genAttr(std::string name, const std::string &attr) {
-        if (!attr.empty()) ss << " " << name << "=\"" << attr << "\"";
+        if (!attr.empty()) ss << " " << name << "=\"" << IViz::escapeDot(attr) << "\"";
     }
 
     virtual void genLabel() { genAttr("label", label); }
@@ -309,14 +333,17 @@ class TableNode : public Node {
         tss << "<table border='0' cellborder='1' cellspacing='0' "
                "cellpadding='2'>";
     }
-    virtual ~TableNode() {
+    virtual ~TableNode() { Done(); }
+
+    virtual void Done() override {
+        if (isDone) return;
         tss << "</table>";
         label = tss.str();
-        Done();
+        Node::Done();
     }
 
     inline void attr_name(std::string name, std::string attr) {
-        tss << "<td " << IViz::encode(attr) << ">" << IViz::encode(name)
+        tss << "<td " << attr << ">" << IViz::encode(name)
             << "</td>";
     }
 
@@ -325,7 +352,7 @@ class TableNode : public Node {
         tss << "<td";
         if (span != 1) tss << " colspan='" << span << "'";
         if (!pt_name.empty()) tss << " PORT='" << pt_name << "'";
-        tss << " " << IViz::encode(attr) << ">" << IViz::encode(value)
+        tss << " " << attr << ">" << IViz::encode(value)
             << "</td>";
     }
 
@@ -333,7 +360,7 @@ class TableNode : public Node {
                                   std::string pt_name = "") {
         tss << "<td";
         if (!pt_name.empty()) tss << " PORT='" << pt_name << "'";
-        tss << " " << IViz::encode(attr) << ">" << IViz::encode(value)
+        tss << " " << attr << ">" << IViz::encode(value)
             << "</td>";
     }
 
@@ -409,7 +436,8 @@ class TableNode : public Node {
 
     template <class T>
     inline void addPointerC(std::string name, T *ds, std::string content = "",
-                            std::string attr = "", std::string attr2 = "") {
+                            std::string attr = "", std::string attr2 = "",
+                            std::string edge = "") {
         if (ds == nullptr) return;
         std::string pt_name = viz.genPortName();
 
@@ -419,7 +447,7 @@ class TableNode : public Node {
         tss << "</tr>";
         if (ds != nullptr) {
             viz.load_ds_c(ds);
-            viz.addEdge(this->name + ":" + pt_name, ds);
+            viz.addEdge(this->name + ":" + pt_name, ds, edge);
         }
     }
 
@@ -543,25 +571,28 @@ class SubGraph : public IViz {
              Config config = {})
         : viz(viz) {
         ss << "subgraph cluster_" << name << " {" << std::endl;
-        if (!label.empty()) ss << "label = \"" << label << "\";" << std::endl;
+        if (!label.empty()) ss << "label = \"" << IViz::escapeDot(label) << "\";" << std::endl;
         ss << config.genGraphStyle() << std::endl;
     }
-    virtual ~SubGraph() {
+    virtual ~SubGraph() { viz.addSubGraph(print()); }
+
+    virtual std::string print() const override {
+        std::ostringstream out;
+        out << ss.str();
         for (auto subgraph : subgraphs) {
-            ss << subgraph << std::endl;
+            out << subgraph << std::endl;
         }
         for (auto node : nodes) {
-            ss << node.first << " " << node.second << ";" << std::endl;
+            out << node.first << " " << node.second << ";" << std::endl;
         }
         for (auto edge : edges) {
-            ss << edge.first.from << " -> " << edge.first.to << " "
+            out << edge.first.from << " -> " << edge.first.to << " "
                << edge.second << ";" << std::endl;
         }
-        ss << "}" << std::endl;
-        viz.addSubGraph(print());
+        out << "}" << std::endl;
+        return out.str();
     }
 
-    virtual std::string print() const override { return ss.str(); }
 
     virtual void setName(void *ds, std::string name) override {
         viz.setName(ds, name);
@@ -576,12 +607,12 @@ class SubGraph : public IViz {
     using IViz::addEdge;
     virtual void addEdge(std::string from, std::string to,
                          std::string edge = "") override {
-        assert(!from.empty());
-        assert(!to.empty());
-        edges[Edge(from, to)] = edge;
+        if (from.empty() || to.empty())
+            throw std::invalid_argument("Edge endpoints must not be empty");
+        edges.emplace_back(Edge(from, to), edge);
     }
     virtual void addNode(std::string name, std::string node) override {
-        assert(!name.empty());
+        if (name.empty()) throw std::invalid_argument("Node name must not be empty");
         nodes[name] = node;
     }
 
@@ -599,13 +630,14 @@ class SubGraph : public IViz {
     std::stringstream ss;
 
     std::map<std::string, std::string> nodes;
-    std::map<Edge, std::string>        edges;
+    std::vector<std::pair<Edge, std::string>>        edges;
     std::vector<std::string>           subgraphs;
 };
 
 inline std::ostream &
 operator<<(std::ostream &out, const IViz &viz) {
-    out << viz.print() << std::endl;
+    viz.write(out);
+    out << std::endl;
     return out;
 }
 
@@ -616,8 +648,20 @@ class Dot : public IViz {
   public:
     Dot(Config config = {}) : config(config) {}
 
+    // Reset the snapshot; configuration is preserved. No active builders may exist.
+    void clear() {
+        nodes.clear(); names.clear(); DSs.clear(); edges.clear(); subgraphs.clear();
+        count0 = count1 = count2 = 0;
+    }
+    void reset() { clear(); }
+
     virtual std::string print() const override {
-        std::stringstream ss;
+        std::ostringstream out;
+        write(out);
+        return out.str();
+    }
+
+    virtual void write(std::ostream &ss) const override {
         ss << "digraph structs {" << std::endl;
         ss << config.genGraphStyle() << std::endl;
 
@@ -632,35 +676,41 @@ class Dot : public IViz {
                << edge.second << ";" << std::endl;
         }
         ss << "}" << std::endl;
-        return ss.str();
     }
 
     virtual void setName(void *ds, std::string name) override {
+        if (!ds || name.empty()) throw std::invalid_argument("Node mapping requires a pointer and name");
+        auto target = DSs.find(name);
+        if (target != DSs.end() && target->second != ds)
+            throw std::invalid_argument("Node name already belongs to another pointer");
+        auto previous = names.find(ds);
+        if (previous != names.end()) DSs.erase(previous->second);
         names[ds] = name;
-        if (!name.empty()) DSs[name] = ds;
+        DSs[name] = ds;
     }
 
     virtual std::string getName(void *ds) const override {
-        assert(hasNode(ds));
-        return names.find(ds)->second;
+        auto found = names.find(ds);
+        if (found == names.end()) throw std::out_of_range("Unknown node pointer");
+        return found->second;
     }
 
     virtual void *getDS(std::string name) const override {
-        assert(!name.empty());
-        return DSs.find(name)->second;
+        auto found = DSs.find(name);
+        return found == DSs.end() ? nullptr : found->second;
     }
 
     using IViz::addEdge;
 
     virtual void addEdge(std::string from, std::string to,
                          std::string edge = "") override {
-        assert(!from.empty());
-        assert(!to.empty());
-        edges[Edge(from, to)] = edge;
+        if (from.empty() || to.empty())
+            throw std::invalid_argument("Edge endpoints must not be empty");
+        edges.emplace_back(Edge(from, to), edge);
     }
 
     virtual void addNode(std::string name, std::string node) override {
-        assert(!name.empty());
+        if (name.empty()) throw std::invalid_argument("Node name must not be empty");
         nodes[name] = node;
     }
 
@@ -669,7 +719,6 @@ class Dot : public IViz {
     }
 
     virtual bool hasNode(void *ds) const override {
-        assert(ds);
         return (names.find(ds) != names.end());
     }
 
@@ -689,7 +738,7 @@ class Dot : public IViz {
     std::map<std::string, std::string> nodes;
     std::map<void *, std::string>      names;
     std::map<std::string, void *>      DSs;
-    std::map<Edge, std::string>        edges;
+    std::vector<std::pair<Edge, std::string>>        edges;
     std::vector<std::string>           subgraphs;
     Config                             config;
     friend class Node;

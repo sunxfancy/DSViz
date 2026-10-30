@@ -1,7 +1,6 @@
 import lldb
 import debugger
-import json
-import re
+import html
 
 mydebugger = None
 
@@ -14,8 +13,25 @@ def get_result(func):
     frame = mydebugger.GetSelectedTarget().GetProcess().GetSelectedThread().GetSelectedFrame()
     options = lldb.SBExpressionOptions()
     result = frame.EvaluateExpression(func, options)
-    cstring = mydebugger.GetSelectedTarget().GetProcess().ReadCStringFromMemory(result.GetValueAsUnsigned(), 1024 * 16, lldb.SBError())
-    return cstring
+    if not result.GetError().Success():
+        raise RuntimeError(str(result.GetError()))
+    process = mydebugger.GetSelectedTarget().GetProcess()
+    address = result.GetValueAsUnsigned()
+    if not address:
+        raise RuntimeError("Visualization returned a null pointer")
+    size_result = frame.EvaluateExpression('_dotToDebuggerSize()', options)
+    if not size_result.GetError().Success():
+        raise RuntimeError(str(size_result.GetError()))
+    size = size_result.GetValueAsUnsigned()
+    if size > 64 * 1024 * 1024:
+        raise RuntimeError("Visualization exceeds the 64 MiB debugger limit")
+    if not size:
+        return ""
+    error = lldb.SBError()
+    data = process.ReadMemory(address, size, error)
+    if not error.Success() or len(data) != size:
+        raise RuntimeError("Could not read complete visualization: " + str(error))
+    return data.decode("utf-8")
 
 
 def plot():
@@ -43,9 +59,9 @@ def plot():
     </head>
     <body onLoad='render()'>
         <div id="graph"></div>
-        <xmp id="dot">
-            ''' + data + '''
-        </xmp>
+        <pre id="dot" hidden>
+            ''' + html.escape(data) + '''
+        </pre>
     </body>
 </html>'''
     

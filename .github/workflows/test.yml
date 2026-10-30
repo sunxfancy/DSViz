@@ -1,0 +1,107 @@
+name: Tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compatibility:
+    name: ${{ matrix.os }} / ${{ matrix.compiler }} / C++${{ matrix.standard }} / ${{ matrix.mode }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        compiler: [g++, clang++]
+        standard: [11, 17, 20]
+        mode: [debug, release]
+        include:
+          - os: macos-latest
+            compiler: clang++
+            standard: 11
+            mode: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install GraphViz (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+      - name: Install GraphViz (macOS)
+        if: runner.os == 'macOS'
+        run: brew install graphviz
+      - name: Build and test
+        shell: bash
+        run: |
+          flags='-g -O0'
+          if [ '${{ matrix.mode }}' = release ]; then flags='-O2 -DNDEBUG'; fi
+          make -j2 test CXX='${{ matrix.compiler }}' CXXFLAGS="-std=c++${{ matrix.standard }} -Wall -Wextra -Wpedantic -Werror $flags"
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.standard }}-${{ matrix.mode }}
+          path: bin/test-results/
+          retention-days: 14
+  sanitizers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++, clang++]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y graphviz
+      - run: make -j2 sanitize CXX='${{ matrix.compiler }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sanitizers-${{ matrix.compiler }}
+          path: bin/sanitize/test-results/
+          retention-days: 14
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+      - run: sudo apt-get update && sudo apt-get install -y graphviz
+      - run: python -m pip install -r tests/requirements.txt
+      - run: make -j2 coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: |
+            bin/coverage/*.html
+            bin/coverage/*.css
+            bin/coverage/*.xml
+            bin/coverage/test-results/
+          retention-days: 14
+  required:
+    name: CI required
+    if: always()
+    needs: [compatibility, sanitizers, coverage]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require all jobs to pass
+        env:
+          COMPATIBILITY: ${{ needs.compatibility.result }}
+          SANITIZERS: ${{ needs.sanitizers.result }}
+          COVERAGE: ${{ needs.coverage.result }}
+        run: test "$COMPATIBILITY" = success && test "$SANITIZERS" = success && test "$COVERAGE" = success

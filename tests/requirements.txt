@@ -1,0 +1,2 @@
+# Only needed by `make coverage`; ordinary tests use the Python standard library.
+gcovr==8.3

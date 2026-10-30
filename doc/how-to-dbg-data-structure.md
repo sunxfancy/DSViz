@@ -104,21 +104,27 @@ The best feature of `DSViz` is that you don't need to change any line of the ori
 Now we can use the graphviz file to visualize the data structure. But we want to see the graphviz file while debugging. This is where CodeLLDB comes in. It is a plugin for VSCode that provides a great debugging experience for C++ code. First, we need an API to print the graphviz file to the debugger. 
 
 ```c++
+static string &_dotDebuggerBuffer() {
+    static thread_local string result;
+    return result;
+}
+
+size_t _dotToDebuggerSize() { return _dotDebuggerBuffer().size(); }
+
 const char* _dotToDebugger(bst& b) {
+    string &result = _dotDebuggerBuffer();
+    result.clear();
     if (!b.getRoot()) return "";
     
     auto* root = mock::get(b.getRoot());
     DSViz::Dot dot;
     dot.load_ds(root);
-    string str = dot.print();
-
-    static char cstr[1024 * 16];
-    strcpy(cstr, str.c_str());
-    return cstr;
+    result = dot.print();
+    return result.c_str();
 }
 ```
 
-Here we use a static buffer to store the string, so the debugger can easily access it. (Return a std::string directly will not work)
+The thread-local string grows with the graph. The debugger reads its exact byte length via `_dotToDebuggerSize()`; the pointer is valid until the next visualization on that thread.
 
 Then we want to recieve it in the lldb. We need to write a python script to do this. I put it in [debug.py](../example/debug.py) as a reference for you. 
 
@@ -127,8 +133,7 @@ First, get the debugger instance, when it is initialized, `__lldb_init_module` f
 ```python
 import lldb
 import debugger
-import json
-import re
+import html
 
 mydebugger = None
 
@@ -143,15 +148,29 @@ Then we need to get the C string from the evaluation of an lldb expression - for
 `GetSelectedTarget().GetProcess().GetSelectedThread().GetSelectedFrame()` will give you the current frame. Then you can evaluate the expression in the current frame by calling `EvaluateExpression`. Use `ReadCStringFromMemory` to get the C string from the result.
 
 ```python
-def get_result(exp):
-    frame = mydebugger.GetSelectedTarget().GetProcess()
-            .GetSelectedThread().GetSelectedFrame()
+def get_result(func):
+    frame = mydebugger.GetSelectedTarget().GetProcess().GetSelectedThread().GetSelectedFrame()
     options = lldb.SBExpressionOptions()
-    result = frame.EvaluateExpression(exp, options)
-    cstring = mydebugger.GetSelectedTarget().GetProcess()
-        .ReadCStringFromMemory(
-            result.GetValueAsUnsigned(), 1024 * 16, lldb.SBError())
-    return cstring
+    result = frame.EvaluateExpression(func, options)
+    if not result.GetError().Success():
+        raise RuntimeError(str(result.GetError()))
+    process = mydebugger.GetSelectedTarget().GetProcess()
+    address = result.GetValueAsUnsigned()
+    if not address:
+        raise RuntimeError("Visualization returned a null pointer")
+    size_result = frame.EvaluateExpression('_dotToDebuggerSize()', options)
+    if not size_result.GetError().Success():
+        raise RuntimeError(str(size_result.GetError()))
+    size = size_result.GetValueAsUnsigned()
+    if size > 64 * 1024 * 1024:
+        raise RuntimeError("Visualization exceeds the 64 MiB debugger limit")
+    if not size:
+        return ""
+    error = lldb.SBError()
+    data = process.ReadMemory(address, size, error)
+    if not error.Success() or len(data) != size:
+        raise RuntimeError("Could not read complete visualization: " + str(error))
+    return data.decode("utf-8")
 ```
 
 Finally, we want a html page to show the graphviz figure. We can use the following code to display it side by side with your code in the VSCode. 
@@ -183,16 +202,16 @@ Here I used a js library [viz.js](https://github.com/mdaines/viz-js) to show it.
     </head>
     <body onLoad='render()'>
         <div id="graph"></div>
-        <xmp id="dot">
-        </xmp>
+        <pre id="dot" hidden>
+        </pre>
     </body>
 </html>
 ```
 
-There is a special tag `<xmp>` in html, it will not escape the html code or any special symbol inside it. So we can put the graphviz string in it. 
+Escape the DOT string with `html.escape()` before placing it in the hidden `<pre>` element. Its `textContent` recovers the original DOT without interpreting it as HTML.
 
 ```python
-document = """ .... <xmp id="dot">""" + graphviz + """</xmp> ... """
+document = """ .... <pre id="dot" hidden>""" + html.escape(graphviz) + """</pre> ... """
 ```
 
 Finally, after we do all the things above, we can use the following command to start the debugging. The most important thing is `initCommands` in it. We need to load the python script into lldb. 
