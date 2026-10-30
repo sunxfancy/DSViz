@@ -1,6 +1,7 @@
 
 #include <iostream>
 #include <cstring>
+#include <vector>
 
 using namespace std;
 
@@ -15,6 +16,18 @@ class bst {
 
   public:
     bst() { root = NULL; }
+    bst(const bst &) = delete;
+    bst &operator=(const bst &) = delete;
+    ~bst() {
+        std::vector<bintree_node *> pending;
+        if (root) pending.push_back(root);
+        while (!pending.empty()) {
+            auto *node = pending.back(); pending.pop_back();
+            if (node->left) pending.push_back(node->left);
+            if (node->right) pending.push_back(node->right);
+            delete node;
+        }
+    }
     int  isempty() { return (root == NULL); }
     bintree_node *getRoot() { return root; }
     void insert(int item);
@@ -42,7 +55,7 @@ bst::insert(int item) {
             else
                 ptr = ptr->left;
         }
-        if (item < parent->data)
+        if (item <= parent->data)
             parent->left = p;
         else
             parent->right = p;
@@ -76,17 +89,23 @@ void dsviz_show(bintree_node* P, DSViz::IViz &viz) {
     if (P->right) node.addEdge(mock::get(P->right), "right");
 }
 
+static string &_dotDebuggerBuffer() {
+    static thread_local string result;
+    return result;
+}
+
+size_t _dotToDebuggerSize() { return _dotDebuggerBuffer().size(); }
+
 const char* _dotToDebugger(bst& b) {
+    string &result = _dotDebuggerBuffer();
+    result.clear();
     if (!b.getRoot()) return "";
     
     auto* root = mock::get(b.getRoot());
     DSViz::Dot dot;
     dot.load_ds(root);
-    string str = dot.print();
-
-    static char cstr[1024 * 16];
-    strcpy(cstr, str.c_str());
-    return cstr;
+    result = dot.print();
+    return result.c_str();
 }
 #endif
 
